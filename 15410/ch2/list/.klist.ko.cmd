@@ -1,0 +1,1 @@
+cmd_/home/hanyu/Desktop/15410/ch2/list/klist.ko := ld -r -m elf_x86_64 -T ./scripts/module-common.lds --build-id  -o /home/hanyu/Desktop/15410/ch2/list/klist.ko /home/hanyu/Desktop/15410/ch2/list/klist.o /home/hanyu/Desktop/15410/ch2/list/klist.mod.o

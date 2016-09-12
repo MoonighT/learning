@@ -1,0 +1,1 @@
+cmd_/home/hanyu/Desktop/15410/ch2/simple/simple.ko := ld -r -m elf_x86_64 -T ./scripts/module-common.lds --build-id  -o /home/hanyu/Desktop/15410/ch2/simple/simple.ko /home/hanyu/Desktop/15410/ch2/simple/simple.o /home/hanyu/Desktop/15410/ch2/simple/simple.mod.o
