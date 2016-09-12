@@ -18,9 +18,11 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/time.h>
 
-#define ECHO_PORT 9999
-#define BUF_SIZE 4096
+#define ECHO_PORT 9998
+#define BUF_SIZE 8192
 
 int close_socket(int sock)
 {
@@ -34,13 +36,16 @@ int close_socket(int sock)
 
 int main(int argc, char* argv[])
 {
-    int sock, client_sock;
+    int i, sock, client_sock, maxfd, maxi, nready;
+		int client[FD_SETSIZE];
     ssize_t readret;
     socklen_t cli_size;
     struct sockaddr_in addr, cli_addr;
     char buf[BUF_SIZE];
+		fd_set rset, allset;
 
     fprintf(stdout, "----- Echo Server -----\n");
+    fprintf(stdout, "fd set size = %d\n", FD_SETSIZE);
     
     /* all networked programs must create a socket */
     if ((sock = socket(PF_INET, SOCK_STREAM, 0)) == -1)
@@ -68,50 +73,73 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Error listening on socket.\n");
         return EXIT_FAILURE;
     }
-
+		//init and set allset
+	  maxfd = sock;
+		maxi = -1;
+		for (i = 0; i < FD_SETSIZE; i++) {
+				client[i] = -1;
+		}
+		FD_ZERO(&allset);
+		FD_SET(sock, &allset);
     /* finally, loop waiting for input and then write it back */
     while (1)
     {
-       cli_size = sizeof(cli_addr);
-       if ((client_sock = accept(sock, (struct sockaddr *) &cli_addr,
+			 rset = allset;
+			 nready = select(maxfd + 1, &rset, NULL, NULL, NULL);
+			 if (FD_ISSET(sock, &rset)) {
+					//new connection
+       		cli_size = sizeof(cli_addr);
+					if ((client_sock = accept(sock, (struct sockaddr *) &cli_addr,
                                  &cli_size)) == -1)
-       {
-           close(sock);
-           fprintf(stderr, "Error accepting connection.\n");
-           return EXIT_FAILURE;
-       }
-       
-       readret = 0;
+       		{
+           		close(sock);
+           		fprintf(stderr, "Error accepting connection.\n");
+       		} else {
+					 		char *ip = inet_ntoa(cli_addr.sin_addr);
+					 		fprintf(stdout, "accept a new client. %s\n", ip);
+			 		}
+					for(i = 0; i < FD_SETSIZE; i++) {
+							if(client[i] < 0) {
+									client[i] = client_sock;
+									break;
+							}
+					}
+					if(FD_SETSIZE == i) {
+							close(client_sock);
+           		fprintf(stderr, "Error too many connection.\n");
+					} else {
+							FD_SET(client_sock, &allset);	
+							if (client_sock > maxfd)
+									maxfd = client_sock;
+							if (i > maxi)
+									maxi = i;
+							if (--nready <= 0)
+									continue;
+					}
+			 }
+			 for (i = 0; i <= maxi; i++) {
+						if ((client_sock = client[i]) < 0)
+								continue;
+						if (FD_ISSET(client_sock, &rset))	{
+       					readret = 0;
+								if((readret = recv(client_sock, buf, BUF_SIZE, 0)) > 1) {
+           					if (send(client_sock, buf, readret, 0) != readret) {
+               					close_socket(client_sock);
+												FD_CLR(client_sock, &allset);
+												client[i] = -1;
+               					fprintf(stderr, "Error sending to client.\n");
+           					}
+       					} else {
+										close_socket(client_sock);
+										FD_CLR(client_sock, &allset);
+										client[i] = -1;
+               			fprintf(stdout, "connection close by client.\n");
+								}
 
-       while((readret = recv(client_sock, buf, BUF_SIZE, 0)) > 1)
-       {
-           if (send(client_sock, buf, readret, 0) != readret)
-           {
-               close_socket(client_sock);
-               close_socket(sock);
-               fprintf(stderr, "Error sending to client.\n");
-               return EXIT_FAILURE;
-           }
-           memset(buf, 0, BUF_SIZE);
-       } 
-
-       if (readret == -1)
-       {
-           close_socket(client_sock);
-           close_socket(sock);
-           fprintf(stderr, "Error reading from client socket.\n");
-           return EXIT_FAILURE;
-       }
-
-       if (close_socket(client_sock))
-       {
-           close_socket(sock);
-           fprintf(stderr, "Error closing client socket.\n");
-           return EXIT_FAILURE;
-       }
-    }
-
-    close_socket(sock);
-
+								if (--nready <= 0)
+										break;
+						}
+			 }
+		}
     return EXIT_SUCCESS;
 }

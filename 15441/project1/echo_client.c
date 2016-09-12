@@ -35,7 +35,7 @@ int main(int argc, char* argv[])
         
     int status, sock;
     struct addrinfo hints;
-	memset(&hints, 0, sizeof(struct addrinfo));
+		memset(&hints, 0, sizeof(struct addrinfo));
     struct addrinfo *servinfo; //will point to the results
     hints.ai_family = AF_UNSPEC;  //don't care IPv4 or IPv6
     hints.ai_socktype = SOCK_STREAM; //TCP stream sockets
