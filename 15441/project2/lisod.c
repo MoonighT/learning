@@ -21,6 +21,8 @@
 #include <arpa/inet.h>
 #include <sys/time.h>
 #include "log.h"
+#include "hio.h"
+#include "parser/parse.h"
 
 #define ECHO_PORT 9998
 #define BUF_SIZE 8192
@@ -43,21 +45,10 @@ void Deinit() {
     log_close();
 }
 
-int main(int argc, char* argv[])
-{
-    Init();
-    int i, sock, client_sock, maxfd, maxi, nready;
-    int client[FD_SETSIZE];
-    ssize_t readret;
-    socklen_t cli_size;
-    struct sockaddr_in addr, cli_addr;
-    char buf[BUF_SIZE];
-    fd_set rset, allset;
-
-    fprintf(stdout, "----- Echo Server -----\n");
-    loginfo("fd set size = %d\n", FD_SETSIZE);
-
+int bind_listen(int port) {
     /* all networked programs must create a socket */
+    int sock;
+    struct sockaddr_in addr;
     if ((sock = socket(PF_INET, SOCK_STREAM, 0)) == -1)
     {
         logerr("Failed creating socket.\n");
@@ -75,42 +66,100 @@ int main(int argc, char* argv[])
         logerr("Failed binding socket.\n");
         return EXIT_FAILURE;
     }
-
-
     if (listen(sock, 5))
     {
         close_socket(sock);
         logerr("Error listening on socket.\n");
         return EXIT_FAILURE;
     }
-    //init and set allset
-    maxfd = sock;
-    maxi = -1;
-    for (i = 0; i < FD_SETSIZE; i++) {
-        client[i] = -1;
+
+    return sock;
+}
+
+int OnNewConnection(int sock) {
+    int client_sock;
+    socklen_t cli_size;
+    struct sockaddr_in cli_addr;
+    cli_size = sizeof(cli_addr);
+    if ((client_sock = accept(sock, (struct sockaddr *) &cli_addr, &cli_size)) == -1)
+    {
+        close(sock);
+        logerr("Error accepting connection.\n");
+    } else {
+        char *ip = inet_ntoa(cli_addr.sin_addr);
+        loginfo("accept a new client. %s\n", ip);
     }
-    FD_ZERO(&allset);
-    FD_SET(sock, &allset);
+    return client_sock;
+}
+
+int senddata(int sock, char* buf, int count) {
+    return send(sock, buf, count, 0);
+}
+
+int parseHttp(int sock, char* buf, int size) {
+    //parse http line
+    Request *request = parse(buf,size,sock);
+    printf("Http Method %s\n",request->http_method);
+    printf("Http Version %s\n",request->http_version);
+    printf("Http Uri %s\n",request->http_uri);
+    int index;
+    for(index = 0;index < request->header_count;index++){
+        printf("Request Header\n");
+        printf("Header name %s Header Value %s\n",request->headers[index].header_name,request->headers[index].header_value);
+    }
+    //parse http header
+    //if post parse body
+    return 0;
+}
+
+int handle_read(int client_sock) {
+    int readret = 0;
+    char buf[BUF_SIZE];
+    if((readret = recv(client_sock, buf, BUF_SIZE, 0)) > 1) {
+        //handle with buf and readret
+        parseHttp(client_sock, buf, readret);
+        senddata(client_sock, buf, readret);
+    } else {
+        loginfo("connection close by client.\n");
+        return -1;
+    }
+    return 0;
+}
+
+typedef struct {
+    fd_set readset;
+    fd_set readresult;
+    fd_set writeset;
+    fd_set writeresult;
+    int client[FD_SETSIZE];
+    int maxfd;
+    int maxi;
+    int nready;
+}poller;
+
+void poll(int sock) {
+    int i, r, client_sock;
+    ssize_t readret;
+    poller p;
+    //init and set allset
+    p.maxfd = sock;
+    p.maxi = -1;
+    for (i = 0; i < FD_SETSIZE; i++) {
+        p.client[i] = -1;
+    }
+    FD_ZERO(&p.readset);
+    FD_SET(sock, &p.readset);
     /* finally, loop waiting for input and then write it back */
     while (1)
     {
-        rset = allset;
-        nready = select(maxfd + 1, &rset, NULL, NULL, NULL);
-        if (FD_ISSET(sock, &rset)) {
+        p.readresult = p.readset;
+        p.nready = select(p.maxfd + 1, &p.readresult, NULL, NULL, NULL);
+        if (FD_ISSET(sock, &p.readresult)) {
             //new connection
-            cli_size = sizeof(cli_addr);
-            if ((client_sock = accept(sock, (struct sockaddr *) &cli_addr,
-                            &cli_size)) == -1)
-            {
-                close(sock);
-                logerr("Error accepting connection.\n");
-            } else {
-                char *ip = inet_ntoa(cli_addr.sin_addr);
-                loginfo("accept a new client. %s\n", ip);
-            }
+            client_sock = OnNewConnection(sock);
             for(i = 0; i < FD_SETSIZE; i++) {
-                if(client[i] < 0) {
-                    client[i] = client_sock;
+                if(p.client[i] < 0) {
+                    p.client[i] = client_sock;
                     break;
                 }
             }
@@ -118,39 +167,42 @@ int main(int argc, char* argv[])
                 close(client_sock);
                 logerr("Error too many connection.\n");
             } else {
-                FD_SET(client_sock, &allset);
-                if (client_sock > maxfd)
-                    maxfd = client_sock;
-                if (i > maxi)
-                    maxi = i;
-                if (--nready <= 0)
+                FD_SET(client_sock, &p.readset);
+                if (client_sock > p.maxfd)
+                    p.maxfd = client_sock;
+                if (i > p.maxi)
+                    p.maxi = i;
+                if (--p.nready <= 0)
                     continue;
             }
         }
-        for (i = 0; i <= maxi; i++) {
-            if ((client_sock = client[i]) < 0)
+        //read or write
+        for (i = 0; i <= p.maxi; i++) {
+            if ((client_sock = p.client[i]) < 0)
                 continue;
-            if (FD_ISSET(client_sock, &rset))	{
-                readret = 0;
-                if((readret = recv(client_sock, buf, BUF_SIZE, 0)) > 1) {
-                    if (send(client_sock, buf, readret, 0) != readret) {
-                        close_socket(client_sock);
-                        FD_CLR(client_sock, &allset);
-                        client[i] = -1;
-                        logerr("Error sending to client.\n");
-                    }
-                } else {
+            if (FD_ISSET(client_sock, &p.readresult))	{
+                //handle read
+                r = handle_read(client_sock);
+                if (r < 0) {
                     close_socket(client_sock);
-                    FD_CLR(client_sock, &allset);
-                    client[i] = -1;
-                    loginfo("connection close by client.\n");
+                    FD_CLR(client_sock, &p.readset);
+                    p.client[i] = -1;
                 }
-
-                if (--nready <= 0)
+                if (--p.nready <= 0)
                     break;
             }
         }
     }
+}
+
+int main(int argc, char* argv[])
+{
+    Init();
+    int sock;
+    fprintf(stdout, "----- Echo Server -----\n");
+    loginfo("fd set size = %d\n", FD_SETSIZE);
+    sock = bind_listen(ECHO_PORT);
+    poll(sock);
     Deinit();
     return EXIT_SUCCESS;
 }
