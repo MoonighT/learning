@@ -11,15 +11,20 @@
  *                                                                             *
  *******************************************************************************/
 
+#include <arpa/inet.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
-#include <unistd.h>
-#include <arpa/inet.h>
+#include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #include "log.h"
 #include "hio.h"
 #include "parser/parse.h"
@@ -28,9 +33,16 @@
 #define BUF_SIZE 8192
 
 typedef struct {
+    HttpStatus status;
+    char* header;
+    int header_length;
+    char* body;
+    int body_length;
+} Response;
+
+typedef struct {
     int sessionid;
-    char* data[FD_SETSIZE];
-    int len;
+    Response* resp;
 }session;
 
 typedef struct {
@@ -117,12 +129,12 @@ int senddata(int sock, char* buf, int count) {
     //return rio_writen(sock, buf, count);
 }
 
-bool validHeader(Request* req) {
-    if (req->http_method != "GET" || req->http_method != "POST" ||
-            req->http_method != "HEAD") {
-        return false;
+int validHeader(Request* req) {
+    if (strcmp(req->http_method,"GET") && strcmp(req->http_method, "POST") &&
+            strcmp(req->http_method, "HEAD")) {
+        return 0;
     }
-    return true;
+    return 1;
 }
 
 void clientError(int sock, char* number, char *message) {
@@ -139,60 +151,59 @@ char* getHeaderByKey(Request_header* headers, int count, char *key) {
     return NULL;
 }
 
-typedef struct {
-    HttpStatus status;
-    char header[BUF_SIZE];
-    int header_length;
-    char body[BUF_SIZE];
-    int body_length;
-} Response;
 
 void serve_static(int sock, char* filename, Response* resp) {
+    loginfo("file = %s\n", filename);
     resp->status = HTTP_REPLY;
     char buf[4096];
     struct stat sbuf;
-    if stat(filename, &sbuf) < 0 {
+    if(stat(filename, &sbuf) < 0) {
         resp->status = HTTP_ERROR;
         clientError(sock, "404", "missing file");
     }
     int filesize = sbuf.st_size;
     sprintf(buf, "HTTP/1.1 200 OK\r\n");
     sprintf(buf, "%sServer: Liso/1.0\r\n", buf);
-    sprintf(buf, "%sDate:%s\r\n", buf, date);
+    //sprintf(buf, "%sDate:%s\r\n", buf, date);
     sprintf(buf, "%sConnection:keep-alive\r\n", buf);
     sprintf(buf, "%sContent-Length: %d\r\n", buf, filesize);
-    sprintf(buf, "%sLast-Modified:%s\r\n", buf, modify_time);
-    sprintf(buf, "%sContent-Type: %s\r\n\r\n", buf, filetype);
+    //sprintf(buf, "%sLast-Modified:%s\r\n", buf, modify_time);
+    //sprintf(buf, "%sContent-Type: %s\r\n\r\n", buf, filetype);
+    resp->header = (char*)malloc((strlen(buf) + 1) * sizeof(char));
     strcpy(resp->header, buf);
     resp->header_length = strlen(buf);
-
     int srcfd = open(filename, O_RDONLY, 0);
     char *srcp = mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
+    resp->body = srcp;
+    resp->body_length = filesize;
+    loginfo("resp header = %s\n", resp->header);
+    loginfo("resp body = %s\n", resp->body);
+    return;
 }
 
 Response* parseHttp(int sock, char* buf, int size, char* www) {
     //parse http line
     //parse http header
+    loginfo("parse http\n");
     Response *resp = (Response*)malloc(sizeof(Response));
     HttpStatus status = HTTP_NORMAL;
     Request *request = parse(buf,size,sock);
-    printf("Http Method %s\n",request->http_method);
-    printf("Http Version %s\n",request->http_version);
-    printf("Http Uri %s\n",request->http_uri);
     int index;
-    for(index = 0;index < request->header_count;index++){
-        printf("Request Header\n");
-        printf("Header name %s Header Value %s\n",request->headers[index].header_name,request->headers[index].header_value);
-    }
-    if (!validHeader(requeset)) {
+    //for(index = 0;index < request->header_count;index++){
+    //    printf("Request Header\n");
+    //    printf("Header name %s Header Value %s\n",request->headers[index].header_name,request->headers[index].header_value);
+    //}
+    if (!validHeader(request)) {
         resp->status = HTTP_ERROR;
         clientError(sock, "505", "Method not implement");
+        logerr("method not implement");
         return resp;
     }
-    if(!strcmp(request->method, "POST")) {
+    if(!strcmp(request->http_method, "POST")) {
         if(getHeaderByKey(request->headers, request->header_count, "Content-Length") == NULL) {
             resp->status = HTTP_ERROR;
             clientError(sock, "411", "post missing content length");
+            logerr("missing content length\n");
             return resp;
         }
     }
@@ -200,7 +211,8 @@ Response* parseHttp(int sock, char* buf, int size, char* www) {
     //handle filename
     if(!strstr(request->http_uri, "cgi-bin")) {
         //static file
-        char *filename;
+        loginfo("static file");
+        char filename[BUF_SIZE];
         strcpy(filename, www);
         strcat(filename, request->http_uri);
         if(request->http_uri[strlen(request->http_uri)-1] == '/')
@@ -215,10 +227,25 @@ Response* parseHttp(int sock, char* buf, int size, char* www) {
 int handle_read(int client_sock, poller *p) {
     int readret = 0;
     char buf[BUF_SIZE];
-    if((readret = rio_readn(client_sock, buf, BUF_SIZE, 0)) > 1) {
+    if((readret = recv(client_sock, buf, BUF_SIZE, 0)) > 1) {
         //handle with buf and readret
         Response* resp = parseHttp(client_sock, buf, readret, p->www);
-        //FD_SET(sock, &p->write_set);
+        if(resp->status == HTTP_REPLY) {
+            int i;
+            for(i=0; i<FD_SETSIZE; i++) {
+                if(sess[i].sessionid == client_sock) {
+                    break;
+                }
+            }
+            if(i == FD_SETSIZE) {
+                logerr("no session\n");
+            } else {
+                sess[i].resp = resp;
+                FD_SET(client_sock, &p->writeset);
+            }
+        } else if (resp->status == HTTP_ERROR) {
+            logerr("http error\n");
+        }
     } else {
         loginfo("connection close by client.\n");
         return -1;
@@ -227,6 +254,7 @@ int handle_read(int client_sock, poller *p) {
 }
 
 int handle_write(int client_sock, poller *p) {
+    int i;
     for(i = 0; i < FD_SETSIZE; i++) {
         if(sess[i].sessionid == client_sock)
             break;
@@ -235,12 +263,17 @@ int handle_write(int client_sock, poller *p) {
         //error no session data
         logerr("No session data for client sock = %d", client_sock);
         close_socket(client_sock);
-        FD_CLR(client_sock, &p.writeset);
-        p.client[i] = -1;
+        FD_CLR(client_sock, &p->writeset);
+        p->client[i] = -1;
     }
-    char *data = sess[i].data;
-    int len = sess[i].len;
+    char *data = sess[i].resp->header;
+    int len = sess[i].resp->header_length;
     senddata(client_sock, data, len);
+    char *body = sess[i].resp->body;
+    int bodylen = sess[i].resp->body_length;
+    senddata(client_sock, data, len);
+    senddata(client_sock, body, bodylen);
+    free(sess[i].resp);
     FD_CLR(client_sock, &p->writeset);
 }
 
@@ -249,6 +282,7 @@ void poll(int sock) {
     ssize_t readret;
     poller p;
     //init and set allset
+    p.www = "www";
     p.maxfd = sock;
     p.maxi = -1;
     for (i = 0; i < FD_SETSIZE; i++) {
