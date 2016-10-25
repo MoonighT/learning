@@ -10,22 +10,26 @@
  *          Wolf Richter <wolf@cs.cmu.edu>                                     *
  *                                                                             *
  *******************************************************************************/
-
+#include <arpa/inet.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
-#include <unistd.h>
-#include <arpa/inet.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "log.h"
 #include "hio.h"
 #include "parser/parse.h"
 
 #define ECHO_PORT 9998
 #define BUF_SIZE 8192
+#define DAEMON 1
 
 int close_socket(int sock)
 {
@@ -37,8 +41,62 @@ int close_socket(int sock)
     return 0;
 }
 
+int daemonlize(char* lockfile) {
+    pid_t pid;
+    pid = fork();
+    if(pid < 0) {
+        logerr("fork error\n");
+        exit(1);
+    }
+    if(pid > 0) {
+        exit(0);
+    }
+    //children
+    if(setsid() < 0) {
+        logerr("setsid error\n");
+        exit(1);
+    }
+    signal(SIGCHLD, SIG_IGN);
+    signal(SIGHUP, SIG_IGN);
+    //second fork avoid get tty
+    pid = fork();
+    if(pid < 0) {
+        logerr("fork error\n");
+        exit(1);
+    }
+    if(pid > 0) {
+        exit(0);
+    }
+    int i, lfp;
+    for(i=getdtablesize(); i>=0; i--) {
+        close(i);
+    }
+    i = open("/dev/null", O_RDWR, 0);
+    dup2(i, STDIN_FILENO);
+    dup2(i, STDOUT_FILENO);
+    dup2(i, STDERR_FILENO);
+    umask(0);
+
+    lfp = open(lockfile, O_RDWR | O_CREAT, 0640);
+    if(lfp < 0) {
+        logerr("open lockfile error\n");
+        exit(1);
+    }
+    if(flock(lfp, F_TLOCK) < 0) {
+        exit(0);
+    }
+    char str[256] = {0};
+    sprintf(str, "%d\n", getpid());
+    write(lfp, str, strlen(str));
+    return 0;
+}
+
 void Init() {
     init_log("./log/server.log");
+    char *lockfile = "server.lock";
+    if(DAEMON) {
+        daemonlize(lockfile);
+    }
 }
 
 void Deinit() {
