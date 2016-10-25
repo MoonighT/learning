@@ -8,6 +8,13 @@
 
 #define RIO_BUFSIZE 8192
 
+typedef enum {
+    HTTP_NORMAL,
+    HTTP_REPLY,
+    HTTP_ERROR,
+    HTTP_CLOSE,
+} HttpStatus;
+
 typedef struct {
     int rio_fd;
     int rio_cnt;                //unread size in buf

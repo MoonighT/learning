@@ -1,0 +1,5 @@
+parser/example
+parser/example.o
+parser/lex.yy.o
+parser/parse.o
+parser/y.tab.o
