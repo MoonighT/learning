@@ -30,7 +30,7 @@
 
 #define ECHO_PORT 9998
 #define BUF_SIZE 8192
-#define DAEMON 1
+#define DAEMON 0
 
 typedef struct {
     HttpStatus status;
@@ -123,7 +123,8 @@ void Init() {
     init_log("./log/server.log");
     char *lockfile = "server.lock";
     if(DAEMON) {
-        daemonlize(lockfile);
+        int r = daemonlize(lockfile);
+        printf("daemon r = %d", r);
     }
 }
 
@@ -192,7 +193,9 @@ int validHeader(Request* req) {
 }
 
 void clientError(int sock, char* number, char *message) {
-
+    char buf[4096];
+    sprintf(buf, "HTTP/1.1 %s %s\r\n", number, message);
+    senddata(sock, buf, strlen(buf));
 }
 
 char* getHeaderByKey(Request_header* headers, int count, char *key) {
@@ -214,6 +217,7 @@ void serve_static(int sock, char* filename, Response* resp) {
     if(stat(filename, &sbuf) < 0) {
         resp->status = HTTP_ERROR;
         clientError(sock, "404", "missing file");
+        return;
     }
     int filesize = sbuf.st_size;
     sprintf(buf, "HTTP/1.1 200 OK\r\n");
