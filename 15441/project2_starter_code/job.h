@@ -22,4 +22,10 @@ typedef struct packet_s {
     char[DATA_LEN] data;
 } packet_t;
 
+
+packet_t* init_packet(int type, short packet_len, u_int seq,
+        u_int ack, char* data);
+void destroy_packet(packet_t*);
+packet_t* parse_request(char*, size_t);
+
 #endif
