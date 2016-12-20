@@ -19,7 +19,7 @@ typedef struct header_s {
 
 typedef struct packet_s {
     header_t header;
-    char[DATA_LEN] data;
+    char data[DATA_LEN] ;
 } packet_t;
 
 
@@ -28,4 +28,9 @@ packet_t* init_packet(int type, short packet_len, u_int seq,
 void destroy_packet(packet_t*);
 packet_t* parse_request(char*, size_t);
 
+
+//helping method
+void print_pkt(packet_t*);
+void netToHost(packet_t*);
+void hostToNet(packet_t*);
 #endif
