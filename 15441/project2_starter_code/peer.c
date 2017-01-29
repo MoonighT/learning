@@ -23,8 +23,9 @@
 
 void peer_run(bt_config_t *config);
 
+bt_config_t config;
+
 int main(int argc, char **argv) {
-  bt_config_t config;
 
   bt_init(&config, argc, argv);
 
@@ -72,6 +73,7 @@ void process_get(char *chunkfile, char *outputfile) {
   printf("PROCESS GET SKELETON CODE CALLED.  Fill me in!  (%s, %s)\n",
 	chunkfile, outputfile);
   //construct whohas packet
+  //make_whohas_packet
 }
 
 void handle_user_input(char *line, void *cbdata) {

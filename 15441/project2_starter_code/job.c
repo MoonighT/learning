@@ -1,8 +1,12 @@
+#include "job.h"
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
-#include <arpa/inet.h>
-#include "job.h"
+#include "chunk.h"
+
+extern bt_config_t config;
 
 packet_t* init_packet(int type, short packet_len, u_int seq,
         u_int ack, char* data) {
@@ -58,4 +62,43 @@ void print_pkt(packet_t* pkt) {
     fprintf(stderr, "packet_len:\t\t%d\n", hdr->packet_len);
     fprintf(stderr, "seq_num:\t\t%d\n", hdr->seq_num);
     fprintf(stderr, "ack_num:\t\t%d\n", hdr->ack_num);
+}
+
+int init_job(char* chunkFile, char* output_file, job_t* job/*in out*/) {
+    //read chunk file
+    FILE* file = fopen(chunkFile, "r");
+    if(file == NULL) {
+        fprintf(stderr, "chunk file cannot open %s", chunkFile);
+        return -1;
+    }
+    //get chunk nums
+    char read_buffer[BUF_SIZE];
+    char hash_buffer[SHA1_HASH_SIZE * 2];
+    int num_line = 0;
+    int i = 0;
+    while(fgets(read_buffer, BUF_SIZE, file)) {
+        num_line++;
+    }
+    job->num_chunks = num_line;
+    job->num_need = num_line;
+    job->num_living = 0;
+    job->chunks = malloc(sizeof(chunk_t) * num_line);
+    fseek(file, 0, SEEK_SET);
+    while(fgets(read_buffer, BUF_SIZE, file)) {
+        sscanf(read_buffer, "%d %s", &job->chunks[i].id, hash_buffer);
+        hex2binary(hash_buffer, SHA1_HASH_SIZE*2, job->chunks[i].hash);
+        job->chunks[i].pvd = NULL;
+        job->chunks[i].num_p= 0;
+        job->chunks[i].cur_size= 0;
+        job->chunks[i].data= malloc(sizeof(char) * 512 * 1024);
+        i++;
+        memset(read_buffer, 0, BUF_SIZE);
+        memset(hash_buffer, 0, SHA1_HASH_SIZE*2);
+    }
+    fclose(file);
+    strcpy(config.output_file, output_file);
+    strcpy(job->get_chunk_file, chunkFile);
+    config.output_file[strlen(output_file)] = '\0';
+    job->get_chunk_file[strlen(chunkFile)] = '\0';
+    return 0;
 }
