@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "chunk.h"
+#include "queue.h"
 
 extern bt_config_t config;
 
@@ -101,4 +102,57 @@ int init_job(char* chunkFile, char* output_file, job_t* job/*in out*/) {
     config.output_file[strlen(output_file)] = '\0';
     job->get_chunk_file[strlen(chunkFile)] = '\0';
     return 0;
+}
+
+queue_t* make_whohas(job_t* job) {
+    short pkt_len = 0;
+    char* data[DATA_LEN];
+    if (job->num_chunks == 0) {
+        return NULL;
+    }
+    queue_t* q = queue_init();
+    if(job->num_chunks > MAX_CHUNK) {
+        //many pkt
+        int i;
+        int n = job->num_chunks / MAX_CHUNK;
+        int len;
+        for(i = 0; i <= n; i++) {
+            len = MAX_CHUNK;
+            if(i==n) {
+                len = job->num_chunks - n * MAX_CHUNK;
+            }
+            pkt_len =  HEADER_LEN + 4 + len * SHA1_HASH_SIZE;
+            make_whohas_data(len, job->chunks+i*MAX_CHUNK, data);
+            packet_t* pkt = init_packet(PKT_WHOHAS, pkt_len, 0, 0, data);
+            enqueue(q, pkt);
+        }
+    } else {
+        //1 pkt
+        pkt_len =  HEADER_LEN + 4 + job->num_chunks * SHA1_HASH_SIZE;
+        make_whohas_data(job->num_chunks, job->chunks, data);
+        packet_t* pkt = init_packet(PKT_WHOHAS, pkt_len, 0, 0, data);
+        enqueue(q, pkt);
+    }
+    return q;
+}
+
+void make_whohas_data(int num_chunks, chunk_t* chunks, char* data) {
+    memset(data, 0, 4);
+    int i = 0;
+    int j = 0;
+    char* ptr = data+4;
+    for (i =0; i < num_chunks; ++i) {
+        if(chunks[i].cur_size == 512*1024)
+            continue;
+        memcpy(ptr + j * SHA1_HASH_SIZE, chunks[i].hash, SHA1_HASH_SIZE);
+        j++;
+    }
+    data[0] = j;
+}
+
+void send_whohas(packet_t* pkt) {
+    bt_peer_t* peer = config.peers;
+    while(peer != NULL) {
+
+    }
 }

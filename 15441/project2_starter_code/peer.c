@@ -16,14 +16,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "debug.h"
-#include "spiffy.h"
 #include "bt_parse.h"
+#include "debug.h"
 #include "input_buffer.h"
+#include "job.h"
+#include "queue.h"
+#include "spiffy.h"
 
 void peer_run(bt_config_t *config);
 
 bt_config_t config;
+job_t globaljob;
 
 int main(int argc, char **argv) {
 
@@ -72,8 +75,15 @@ void process_inbound_udp(int sock) {
 void process_get(char *chunkfile, char *outputfile) {
   printf("PROCESS GET SKELETON CODE CALLED.  Fill me in!  (%s, %s)\n",
 	chunkfile, outputfile);
-  //construct whohas packet
-  //make_whohas_packet
+    //construct whohas packet
+    //make_whohas_packet
+    init_job(chunkfile, outputfile, &globaljob);
+    queue_t *whohas_packets = make_whohas(&globaljob);
+    packet_t* cur_pkt = NULL;
+    while((cur_pkt = (packet_t*)dequeue(whohas_packets)) != NULL) {
+        send_whohas(cur_pkt);
+        destroy_packet(cur_pkt);
+    }
 }
 
 void handle_user_input(char *line, void *cbdata) {
