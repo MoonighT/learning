@@ -63,6 +63,7 @@ packet_t* init_packet(int type, short packet_len, u_int seq,
         u_int ack, char* data);
 void destroy_packet(packet_t*);
 packet_t* parse_request(char*, size_t);
+void send_packet(packet_t* pkt, struct sockaddr* to);
 
 void print_pkt(packet_t*);
 void netToHost(packet_t*);

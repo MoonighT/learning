@@ -6,8 +6,11 @@
 #include <string.h>
 #include "chunk.h"
 #include "queue.h"
+#include "spiffy.h"
 
 extern bt_config_t config;
+
+void make_whohas_data(int num_chunks, chunk_t* chunks, char* data);
 
 packet_t* init_packet(int type, short packet_len, u_int seq,
         u_int ack, char* data) {
@@ -27,7 +30,9 @@ packet_t* init_packet(int type, short packet_len, u_int seq,
 }
 
 void destroy_packet(packet_t* pkt) {
-    free(pkt);
+    if(pkt != NULL) {
+        free(pkt);
+    }
 }
 
 packet_t* parse_request(char* data, size_t length) {
@@ -106,7 +111,7 @@ int init_job(char* chunkFile, char* output_file, job_t* job/*in out*/) {
 
 queue_t* make_whohas(job_t* job) {
     short pkt_len = 0;
-    char* data[DATA_LEN];
+    char data[DATA_LEN];
     if (job->num_chunks == 0) {
         return NULL;
     }
@@ -153,6 +158,22 @@ void make_whohas_data(int num_chunks, chunk_t* chunks, char* data) {
 void send_whohas(packet_t* pkt) {
     bt_peer_t* peer = config.peers;
     while(peer != NULL) {
-
+        if(peer->id != config.identity) {
+            //send pkt
+            fprintf(stderr, "send pkt to peer id = %d\n", peer->id);
+            print_pkt(pkt);
+            char str[20];
+            inet_ntop(AF_INET, &peer->addr.sin_addr, str, INET_ADDRSTRLEN);
+            printf("to addr = %s, port = %d\n", str, ntohs(peer->addr.sin_port));
+            send_packet(pkt, (struct sockaddr*)&peer->addr);
+        }
+        peer = peer->next;
     }
+}
+
+void send_packet(packet_t* pkt, struct sockaddr* to) {
+    hostToNet(pkt);
+    int r = spiffy_sendto(config.sock, pkt, pkt->header.packet_len, 0, to, sizeof(*to));
+    printf("sendto ret = %d\n", r);
+    netToHost(pkt);
 }
