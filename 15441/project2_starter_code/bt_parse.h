@@ -33,8 +33,8 @@ struct bt_config_s {
   int   max_conn;
   short identity;
   unsigned short myport;
-
-  int argc; 
+  int sock;
+  int argc;
   char **argv;
 
   bt_peer_t *peers;
