@@ -9,7 +9,7 @@ class Record:
         parts = line.split(',')
         self._id = int(parts[0])
         self.predict = parts[1]
-        self.nexid = int(parts[2])
+        self.nextid = int(parts[2])
         self.pos = int(parts[3])
         datas = np.array([ int(x) for x in parts[4:]])
         self.img = np.reshape(datas, (-1, self.col))
@@ -56,6 +56,20 @@ def makeData(contents):
         i.append(r.id())
     return np.array(x), np.array(y), np.array(i)
 
+def makeDataEx(contents):
+    x = []
+    y = []
+    i = []
+    nextid =[]
+    for content in contents:
+        r = constructOneRecord(content)
+#        r.show()
+        x.append(r.data())
+        y.append(r.label())
+        i.append(r.id())
+        nextid.append(r.nextid)
+    return np.array(x), np.array(y), np.array(i), np.array(nextid)
+
 def loadData(path="./data/train.csv"):
     with open(path) as f:
         contents = f.readlines()
@@ -69,6 +83,33 @@ def loadTest(path="./data/test2.csv"):
         contents = f.readlines()
     contents = contents[1:]
     return makeData(contents)
+
+def loadDataSentence(path="./data/train.csv"):
+    with open(path) as f:
+        contents = f.readlines()
+    contents = contents[1:]
+    sentences = []
+    sentence = []
+    for content in contents:
+        r = constructOneRecord(content)
+        if r.nextid == -1:
+            sentence.append(r.label())
+            sentences.append(sentence)
+            sentence = []
+        else:
+            sentence.append(r.label())
+    return sentences
+
+def loadTestSentence(path="./data/test.csv"):
+    with open(path) as f:
+        contents = f.readlines()
+    contents = contents[1:]
+    seq = []
+    for i, content in enumerate(contents):
+        r = constructOneRecord(content)
+        if r.nextid == -1:
+            seq.append(i)
+    return seq 
 
 
 if __name__ == "__main__":
