@@ -194,7 +194,9 @@ namespace cmudb {
                 new_node->SetParentPageId(pageid);
                 // populate mid node 
                 pnode->PopulateNewRoot(old_node->GetPageId(), midkey, new_node->GetPageId());
-                //pnode->InsertNodeAfter(old_node->GetPageId(), midkey, new_node->GetPageId());
+                root_page_id_ = pnode->GetPageId();
+                printf("update root page id =%d\n", root_page_id_);
+                UpdateRootPageId(0);
                 buffer_pool_manager_->UnpinPage(pageid, true);
             } else {
                 // else just insert new node into parent node
@@ -387,17 +389,32 @@ namespace cmudb {
     INDEX_TEMPLATE_ARGUMENTS
         std::string BPLUSTREE_TYPE::ToString(bool verbose) { 
             std::string result;
-            auto pg = buffer_pool_manager_->FetchPage(root_page_id_);
-            auto root_page = reinterpret_cast<BPlusTreePage *>(pg->GetData());
-            if(!root_page->IsLeafPage()) {
-                auto interPage = 
-                    reinterpret_cast<B_PLUS_TREE_INTERNAL_PAGE_VARIABLE_TYPE *>(pg->GetData());
-                result += interPage->ToString(verbose); 
-            } else {
-                auto leafPage = reinterpret_cast<B_PLUS_TREE_LEAF_PAGE_TYPE*>(pg->GetData());
-                result += leafPage->ToString(verbose); 
+            std::queue<page_id_t> page_queue;
+            page_queue.push(root_page_id_);
+            while (!page_queue.empty()) {
+                auto page_id = page_queue.front();
+                auto pg = buffer_pool_manager_->FetchPage(page_id);
+                auto target_page = reinterpret_cast<BPlusTreePage *>(pg->GetData());
+                printf("pageid=%d, size=%d\n", page_id, target_page->GetSize());
+                if(!target_page->IsLeafPage()) {
+                    auto interPage = 
+                        reinterpret_cast<B_PLUS_TREE_INTERNAL_PAGE_VARIABLE_TYPE *>(pg->GetData());
+                    result += interPage->ToString(verbose); 
+                    result += "\n";
+                    // add children
+                    for(int i=0; i<interPage->GetSize(); ++i) {
+                        page_id_t child_pid = interPage->ValueAt(i);
+                        page_queue.push(child_pid);
+                    }
+                } else {
+                    auto leafPage = reinterpret_cast<B_PLUS_TREE_LEAF_PAGE_TYPE*>(pg->GetData());
+                    result += leafPage->ToString(verbose); 
+                    result += "\n";
+                }
+                buffer_pool_manager_->UnpinPage(page_id, false);
+                page_queue.pop();
             }
-            buffer_pool_manager_->UnpinPage(root_page_id_, false);
+            
             return result; 
         }
 

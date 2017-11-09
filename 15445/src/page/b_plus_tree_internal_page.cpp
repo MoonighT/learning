@@ -105,6 +105,7 @@ namespace cmudb {
             array[1].first = new_key;
             array[0].second = old_value;
             array[1].second = new_value;
+            SetSize(2);
         }
     /*
      * Insert new_key & new_value pair right after the pair with its value ==
