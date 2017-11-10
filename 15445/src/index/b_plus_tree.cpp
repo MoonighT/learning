@@ -115,6 +115,7 @@ namespace cmudb {
                 Transaction *transaction) {
             // find leaf page
             auto node = FindLeafPage(key, false);
+            printf("insertleaf|pageid=%d\n", node->GetPageId());
             ValueType val;
             bool exist = node->Lookup(key, val, comparator_);
             if(exist) 
@@ -349,8 +350,9 @@ namespace cmudb {
                     if(!node->IsLeafPage()) {
                         auto interPage = 
                             reinterpret_cast<B_PLUS_TREE_INTERNAL_PAGE_VARIABLE_TYPE *>(pg->GetData());
-                        const ValueType rid = interPage->Lookup(key, comparator_);
-                        pg_id = rid.GetPageId();
+                        const page_id_t pid = interPage->Lookup(key, comparator_);
+                        pg_id = pid; 
+                        printf("findleaf|pageid=%d\n", pg_id);
                     } else {
                         auto leafPage = reinterpret_cast<B_PLUS_TREE_LEAF_PAGE_TYPE*>(pg->GetData());
                         result = leafPage;
