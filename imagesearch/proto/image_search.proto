@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package shopeeimage;
+
+service ShopeeImage {
+    rpc SearchImage(SearchReq) returns (SearchResp) {}
+    rpc IndexImage(IndexReq) returns (IndexResp) {}
+}
+
+message Image {
+    string id    = 1;
+    bytes data   = 2;
+}
+
+message SearchReq{
+    Image query = 1;
+}
+
+message ResultItem {
+    string id       = 1;
+    double score    = 2;
+}
+
+message SearchResp{
+    int64 err_code     = 1;
+    repeated ResultItem items   = 2; 
+} 
+
+message IndexReq{
+    repeated Image images = 1;
+}
+
+message IndexResp{
+    int64 err_code     = 1;
+}
