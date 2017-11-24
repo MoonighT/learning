@@ -352,9 +352,10 @@ namespace cmudb {
                             reinterpret_cast<B_PLUS_TREE_INTERNAL_PAGE_VARIABLE_TYPE *>(pg->GetData());
                         const page_id_t pid = interPage->Lookup(key, comparator_);
                         pg_id = pid; 
-                        printf("findleaf|pageid=%d\n", pg_id);
+                        printf("findleaf|internalpage, pageid=%d\n", pg_id);
                     } else {
                         auto leafPage = reinterpret_cast<B_PLUS_TREE_LEAF_PAGE_TYPE*>(pg->GetData());
+                        printf("findleaf|pageid=%d\n", leafPage->GetPageId());
                         result = leafPage;
                     }
                     buffer_pool_manager_->UnpinPage(root_page_id_, false);

@@ -76,12 +76,12 @@ namespace cmudb {
         ValueType
         B_PLUS_TREE_INTERNAL_PAGE_TYPE::Lookup(const KeyType &key,
                 const KeyComparator &comparator) const {
-            for(int i=0; i<GetSize()-2;++i) {
-                if(i==0 && comparator(array[1].first, key) < 0) {
+            for(int i=0; i<GetSize()-1;++i) {
+                if(i==0 && comparator(key, array[1].first) < 0) {
                     return array[0].second;
                 }
-                if((comparator(array[i].first, key) >= 0) && 
-                    (comparator(array[i+1].first, key) < 0)) {
+                if((comparator(key, array[i].first) >= 0) && 
+                    (comparator(key, array[i+1].first) < 0)) {
                     return array[i].second;
                 }
             }
