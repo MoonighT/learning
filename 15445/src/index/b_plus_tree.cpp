@@ -127,6 +127,7 @@ namespace cmudb {
                 // need to split
                 // newNode is next node
                 auto newNode = Split(node);
+                node->SetNextPageId(newNode->GetPageId());
                 // need to insert mid key into parent
                 InsertIntoParent(node, key, newNode, transaction);
             }
@@ -149,11 +150,10 @@ namespace cmudb {
                                 "out of memory");    
             }
             // need to check node is leaf or internal
-            auto newNode =  reinterpret_cast<B_PLUS_TREE_LEAF_PAGE_TYPE *>(pg->GetData());
+            auto newNode =  reinterpret_cast<N *>(pg->GetData());
             newNode->Init(pageid, node->GetParentPageId());
             // move second half to newnode
             node->MoveHalfTo(newNode, buffer_pool_manager_);
-            node->SetNextPageId(pageid);
             buffer_pool_manager_->UnpinPage(pageid, true);
             return newNode;
         }
@@ -195,6 +195,7 @@ namespace cmudb {
                 new_node->SetParentPageId(pageid);
                 // populate mid node 
                 pnode->PopulateNewRoot(old_node->GetPageId(), midkey, new_node->GetPageId());
+                // if internal page, need to remove a mid key
                 root_page_id_ = pnode->GetPageId();
                 printf("update root page id =%d\n", root_page_id_);
                 UpdateRootPageId(0);
@@ -217,6 +218,14 @@ namespace cmudb {
                     static_cast<B_PLUS_TREE_INTERNAL_PAGE_VARIABLE_TYPE*>(new_node)->Remove(0);
                 }
                 // need to check size and call split again
+                if(pnode->GetSize() >= pnode->GetMaxSize()) {
+                    // split the internal node
+                    printf("split pnode internal %d\n", pnode->GetPageId());
+                    auto new_internal_node = Split(pnode);
+                    printf("after split internal pnode size=%d, newnode size=%d\n",
+                            pnode->GetSize(), new_internal_node->GetSize());
+                    InsertIntoParent(pnode, key, new_internal_node,transaction);
+                }
                 buffer_pool_manager_->UnpinPage(ppageid, true);
             }
         }

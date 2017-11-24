@@ -142,7 +142,7 @@ namespace cmudb {
                 BufferPoolManager *buffer_pool_manager) {
             int j=0;
             // move the elements
-            for(int i=GetSize()/2, j=0; i<GetSize(); ++i, ++j) {
+            for(int i=GetSize()/2; i<GetSize(); ++i, ++j) {
                 recipient->array[recipient->GetSize()+j] = array[i];
             }
             // update two size
