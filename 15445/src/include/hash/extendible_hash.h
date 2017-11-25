@@ -13,6 +13,7 @@
 #include <vector>
 #include <string>
 #include <mutex>
+#include <memory>
 
 #include "hash/hash_table.h"
 

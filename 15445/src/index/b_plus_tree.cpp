@@ -130,6 +130,7 @@ namespace cmudb {
                 node->SetNextPageId(newNode->GetPageId());
                 // need to insert mid key into parent
                 InsertIntoParent(node, key, newNode, transaction);
+                // leaf node no need to update parent
             }
             return true;
         }
@@ -215,7 +216,8 @@ namespace cmudb {
                 // if internal move first from newnode to parent
                     pnode->InsertNodeAfter(old_node->GetPageId(),
                              midkey, new_node->GetPageId());
-                    static_cast<B_PLUS_TREE_INTERNAL_PAGE_VARIABLE_TYPE*>(new_node)->Remove(0);
+                    // cannot remove 0, ignore the first key, value is useful
+                    //static_cast<B_PLUS_TREE_INTERNAL_PAGE_VARIABLE_TYPE*>(new_node)->Remove(0);
                 }
                 // need to check size and call split again
                 if(pnode->GetSize() >= pnode->GetMaxSize()) {
@@ -225,6 +227,14 @@ namespace cmudb {
                     printf("after split internal pnode size=%d, newnode size=%d\n",
                             pnode->GetSize(), new_internal_node->GetSize());
                     InsertIntoParent(pnode, key, new_internal_node,transaction);
+                    // need to update parent for new node
+                    for(int i=0; i<new_internal_node->GetSize();++i) {
+                        auto child_id = new_internal_node->ValueAt(i);
+                        auto child_pg = buffer_pool_manager_->FetchPage(child_id);
+                        auto child_node =  reinterpret_cast<BPlusTreePage*>(child_pg->GetData());
+                        child_node->SetParentPageId(new_internal_node->GetPageId());
+                        buffer_pool_manager_->UnpinPage(child_id, true);
+                    }
                 }
                 buffer_pool_manager_->UnpinPage(ppageid, true);
             }
