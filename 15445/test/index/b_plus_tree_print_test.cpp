@@ -26,7 +26,6 @@ std::string usageMessage() {
       "\tx -- Destroy the whole tree.  Start again with an empty tree of the "
       "same order.\n"
       "\tt -- Print the B+ tree.\n"
-      "\tv -- Toggle verbose and print B+ tree.\n"
       "\tq -- Quit. (Or use Ctl-D.)\n"
       "\t? -- Print this help message.\n\n";
   return message;
@@ -46,7 +45,9 @@ TEST(BptTreeTest, UnitTest) {
   std::string createStmt = "a bigint";
   Schema *key_schema = ParseCreateStatement(createStmt);
   GenericComparator<8> comparator(key_schema);
-  BufferPoolManager *bpm = new BufferPoolManager(100, "test.db");
+
+  DiskManager *disk_manager = new DiskManager("test.db");
+  BufferPoolManager *bpm = new BufferPoolManager(100, disk_manager);
   // create and fetch header_page
   page_id_t page_id;
   auto header_page = bpm->NewPage(page_id);
@@ -54,31 +55,33 @@ TEST(BptTreeTest, UnitTest) {
   // create b+ tree
   BPlusTree<GenericKey<8>, RID, GenericComparator<8>> tree("foo_pk", bpm,
                                                            comparator);
+  // create transaction
+  Transaction *transaction = new Transaction(0);
   while (!quit) {
     std::cout << "> ";
     std::cin >> instruction;
     switch (instruction) {
     case 'd':
       std::cin >> filename;
-      tree.RemoveFromFile(filename);
+      tree.RemoveFromFile(filename, transaction);
       std::cout << tree.ToString(verbose) << '\n';
       break;
     case 'a':
       std::cin >> key;
       index_key.SetFromInteger(key);
-      tree.Remove(index_key);
+      tree.Remove(index_key, transaction);
       std::cout << tree.ToString(verbose) << '\n';
       break;
     case 'i':
       std::cin >> key;
       rid.Set((int32_t)(key >> 32), (int)(key & 0xFFFFFFFF));
       index_key.SetFromInteger(key);
-      tree.Insert(index_key, rid);
+      tree.Insert(index_key, rid, transaction);
       std::cout << tree.ToString(verbose) << '\n';
       break;
     case 'f':
       std::cin >> filename;
-      tree.InsertFromFile(filename);
+      tree.InsertFromFile(filename, transaction);
       std::cout << tree.ToString(verbose) << '\n';
       break;
     case 'q':
@@ -95,11 +98,8 @@ TEST(BptTreeTest, UnitTest) {
       break;
     case 'v':
       verbose = !verbose;
+      tree.ToString(verbose);
       break;
-    case 't':
-      std::cout << tree.ToString(verbose) << '\n';
-      break;
-
     // case 'x':
     //   tree.destroyTree();
     //   tree.print();
@@ -115,6 +115,9 @@ TEST(BptTreeTest, UnitTest) {
   }
   bpm->UnpinPage(HEADER_PAGE_ID, true);
   delete bpm;
+  delete transaction;
+  delete disk_manager;
   remove("test.db");
+  remove("test.log");
 }
 } // namespace cmudb

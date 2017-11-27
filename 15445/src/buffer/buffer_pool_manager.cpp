@@ -11,8 +11,9 @@ namespace cmudb {
      */
     BufferPoolManager::BufferPoolManager(size_t pool_size,
             const std::string &db_file)
-        : pool_size_(pool_size), disk_manager_{db_file} {
+        : pool_size_(pool_size) {
             // a consecutive memory space for buffer pool
+            disk_manager_ = new DiskManager(db_file);
             pages_ = new Page[pool_size_];
             page_table_ = new ExtendibleHash<page_id_t, Page *>(100);
             replacer_ = new LRUReplacer<Page *>;
@@ -24,6 +25,22 @@ namespace cmudb {
             }
         }
 
+    BufferPoolManager::BufferPoolManager(size_t pool_size,
+            DiskManager *disk_manager,
+            LogManager *log_manager)
+        : pool_size_(pool_size), disk_manager_(disk_manager),
+        log_manager_(log_manager) {
+            // a consecutive memory space for buffer pool
+            pages_ = new Page[pool_size_];
+            page_table_ = new ExtendibleHash<page_id_t, Page *>(BUCKET_SIZE);
+            replacer_ = new LRUReplacer<Page *>;
+            free_list_ = new std::list<Page *>;
+
+            // put all the pages into free list
+            for (size_t i = 0; i < pool_size_; ++i) {
+                free_list_->push_back(&pages_[i]);
+            }
+        }
     /*
      * BufferPoolManager Deconstructor
      * WARNING: Do Not Edit This Function
@@ -67,7 +84,7 @@ namespace cmudb {
         //static_assert(pg!=nullptr, "fetch page is nullptr");
         if(pg->is_dirty_) {
             // write back to disk
-            disk_manager_.WritePage(pg->page_id_, pg->GetData());
+            disk_manager_->WritePage(pg->page_id_, pg->GetData());
         }
         // delete entry from table hash
         exist = page_table_->Remove(pg->page_id_);
@@ -77,7 +94,7 @@ namespace cmudb {
         pg->page_id_= page_id;
         pg->pin_count_++;
         pg->is_dirty_ = false;
-        disk_manager_.ReadPage(page_id, pg->GetData());
+        disk_manager_->ReadPage(page_id, pg->GetData());
         page_table_->Insert(page_id, pg);
         return pg;
     }
@@ -121,7 +138,7 @@ namespace cmudb {
         if(!exist) {
             return false;
         }
-        disk_manager_.WritePage(pg->page_id_, pg->GetData());
+        disk_manager_->WritePage(pg->page_id_, pg->GetData());
         pg->is_dirty_ = false;
         return true; 
     }
@@ -132,7 +149,7 @@ namespace cmudb {
     void BufferPoolManager::FlushAllPages() {
         for(size_t i=0; i< pool_size_; ++i) {
             if(pages_[i].is_dirty_) {
-                disk_manager_.WritePage(pages_[i].page_id_,
+                disk_manager_->WritePage(pages_[i].page_id_,
                         pages_[i].GetData());
             }
         }
@@ -160,7 +177,7 @@ namespace cmudb {
             pg->is_dirty_ = false;
             free_list_->push_back(pg);
         }
-        disk_manager_.DeallocatePage(page_id);
+        disk_manager_->DeallocatePage(page_id);
         return false; 
     }
 
@@ -174,7 +191,7 @@ namespace cmudb {
      * return nullptr is all the pages in pool are pinned
      */
     Page *BufferPoolManager::NewPage(page_id_t &page_id) { 
-        page_id = disk_manager_.AllocatePage();
+        page_id = disk_manager_->AllocatePage();
         // get a Page
         Page *pg = nullptr;
         if(free_list_->size() > 0) {

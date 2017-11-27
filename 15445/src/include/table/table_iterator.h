@@ -19,7 +19,7 @@ class TableIterator {
   friend class Cursor;
 
 public:
-  TableIterator(TableHeap *table_heap, RID rid);
+  TableIterator(TableHeap *table_heap, RID rid, Transaction *txn);
 
   ~TableIterator() { delete tuple_; }
 
@@ -42,6 +42,7 @@ public:
 private:
   TableHeap *table_heap_;
   Tuple *tuple_;
+  Transaction *txn_;
 };
 
 } // namespace cmudb

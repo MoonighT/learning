@@ -43,9 +43,24 @@ public:
     return os;
   }
 
+  bool operator==(const RID &other) const {
+    if ((page_id_ == other.page_id_) && (slot_num_ == other.slot_num_))
+      return true;
+    else
+      return false;
+  }
+
 private:
   page_id_t page_id_;
   int slot_num_; // logical offset from 0, 1...
 };
 
 } // namespace cmudb
+
+namespace std {
+template <> struct hash<cmudb::RID> {
+  size_t operator()(const cmudb::RID &obj) const {
+    return hash<int64_t>()(obj.Get());
+  }
+};
+} // namespace std

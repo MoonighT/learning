@@ -23,18 +23,32 @@ class Tuple {
   friend class TableIterator;
 
 public:
-  // constructor for pointing to table heap
+  // Default constructor (to create a dummy tuple)
+  inline Tuple() : allocated_(false), rid_(RID()), size_(0), data_(nullptr) {}
+
+  // constructor for table heap tuple
   Tuple(RID rid) : allocated_(false), rid_(rid) {}
 
   // constructor for creating a new tuple based on input value
   Tuple(std::vector<Value> values, Schema *schema);
 
+  // copy constructor, deep copy
+  Tuple(const Tuple &other);
+
+  // assign operator, deep copy
+  Tuple &operator=(const Tuple &other);
+
   ~Tuple() {
-    // std::cout << "rid is " << rid_.ToString();
-    // std::cout << "is allocated " << allocated_ << '\n';
     if (allocated_)
       delete[] data_;
+    allocated_ = false;
+    data_ = nullptr;
   }
+  // serialize tuple data
+  void SerializeTo(char *storage) const;
+
+  // deserialize tuple data(deep copy)
+  void DeserializeFrom(const char *storage);
 
   // return RID of current tuple
   inline RID GetRid() const { return rid_; }
@@ -54,6 +68,7 @@ public:
     Value value = GetValue(schema, column_id);
     return value.IsNull();
   }
+  inline bool IsAllocated() { return allocated_; }
 
   std::string ToString(Schema *schema) const;
 
@@ -61,7 +76,7 @@ private:
   // Get the starting storage address of specific column
   const char *GetDataPtr(Schema *schema, const int column_id) const;
 
-  bool allocated_; // is allocated outside or is pointed to table heap?
+  bool allocated_; // is allocated?
   RID rid_;        // if pointing to the table heap, the rid is valid
   int32_t size_;
   char *data_;

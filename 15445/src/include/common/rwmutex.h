@@ -1,5 +1,7 @@
-/*
+/**
  * rwmutex.h
+ *
+ * Reader-Writer lock
  */
 
 #pragma once

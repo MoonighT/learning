@@ -9,9 +9,9 @@
  *                         free space pointer
  *
  *  Header format (size in byte):
- *  ---------------------------------------------------------------------
- * | PageId (4) | PrevPageId (4) | NextPageId (4) | FreeSpacePointer (4) |
- *  ---------------------------------------------------------------------
+ *  --------------------------------------------------------------------------
+ * | PageId (4)| LSN (4)| PrevPageId (4)| NextPageId (4)| FreeSpacePointer(4) |
+ *  --------------------------------------------------------------------------
  *  --------------------------------------------------------------
  * | TupleCount (4) | Tuple_1 offset (4) | Tuple_1 size (4) | ... |
  *  --------------------------------------------------------------
@@ -23,8 +23,10 @@
 #include <cstring>
 
 #include "common/rid.h"
-#include "table/tuple.h"
+#include "concurrency/lock_manager.h"
+#include "logging/log_manager.h"
 #include "page/page.h"
+#include "table/tuple.h"
 
 namespace cmudb {
 
@@ -36,8 +38,9 @@ public:
   void Init(page_id_t page_id, size_t page_size,
             page_id_t prev_page_id = INVALID_PAGE_ID,
             page_id_t next_page_id = INVALID_PAGE_ID);
+  void Init(page_id_t page_id, size_t page_size, page_id_t prev_page_id,
+            LogManager *log_manager, Transaction *txn);
   page_id_t GetPageId();
-
   page_id_t GetPrevPageId();
   page_id_t GetNextPageId();
   void SetPrevPageId(page_id_t prev_page_id);
@@ -46,12 +49,24 @@ public:
   /**
    * Tuple related
    */
-  bool InsertTuple(const Tuple &tuple, RID &rid); // return rid if success
-  bool DeleteTuple(const RID &rid);
-  bool UpdateTuple(const Tuple &tuple, const RID &rid);
+  bool InsertTuple(const Tuple &tuple, RID &rid, Transaction *txn,
+                   LockManager *lock_manager,
+                   LogManager *log_manager); // return rid if success
+  bool MarkDelete(const RID &rid, Transaction *txn, LockManager *lock_manager,
+                  LogManager *log_manager); // delete
+  bool UpdateTuple(const Tuple &new_tuple, Tuple &old_tuple, const RID &rid,
+                   Transaction *txn, LockManager *lock_manager,
+                   LogManager *log_manager);
+
+  // commit/abort time
+  void ApplyDelete(const RID &rid, Transaction *txn,
+                   LogManager *log_manager); // when commit success
+  void RollbackDelete(const RID &rid, Transaction *txn,
+                      LogManager *log_manager); // when commit abort
 
   // return tuple (with data pointing to heap) if success
-  bool GetTuple(const RID &rid, Tuple &tuple);
+  bool GetTuple(const RID &rid, Tuple &tuple, Transaction *txn,
+                LockManager *lock_manager);
 
   /**
    * Tuple iterator
