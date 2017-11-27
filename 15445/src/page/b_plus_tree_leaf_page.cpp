@@ -23,7 +23,7 @@ namespace cmudb {
         void B_PLUS_TREE_LEAF_PAGE_TYPE::Init(page_id_t page_id, page_id_t parent_id) {
             SetPageType(IndexPageType::LEAF_PAGE);
             SetSize(0);
-            SetMaxSize(4);
+            SetMaxSize(10);
             SetParentPageId(parent_id);
             SetPageId(page_id);
             SetNextPageId(INVALID_PAGE_ID);
@@ -49,9 +49,13 @@ namespace cmudb {
     INDEX_TEMPLATE_ARGUMENTS
         int B_PLUS_TREE_LEAF_PAGE_TYPE::KeyIndex(
                 const KeyType &key, const KeyComparator &comparator) const {
+            for(int i=0; i<GetSize();++i) {
+                if(comparator(array[i].first, key) >= 0) {
+                    return i;
+                }
+            }
             return 0;
         }
-
     /*
      * Helper method to find and return the key associated with input "index"(a.k.a
      * array offset)

@@ -331,7 +331,12 @@ namespace cmudb {
      * @return : index iterator
      */
     INDEX_TEMPLATE_ARGUMENTS
-        INDEXITERATOR_TYPE BPLUSTREE_TYPE::Begin() { return INDEXITERATOR_TYPE(); }
+        INDEXITERATOR_TYPE BPLUSTREE_TYPE::Begin() { 
+            KeyType dummy;
+            auto pg = FindLeafPage(dummy, true);
+            return INDEXITERATOR_TYPE(pg->GetPageId(), pg->GetNextPageId(),
+                    0, pg->GetSize(), buffer_pool_manager_);
+        }
 
     /*
      * Input parameter is low key, find the leaf page that contains the input key
@@ -340,7 +345,11 @@ namespace cmudb {
      */
     INDEX_TEMPLATE_ARGUMENTS
         INDEXITERATOR_TYPE BPLUSTREE_TYPE::Begin(const KeyType &key) {
-            return INDEXITERATOR_TYPE();
+            auto pg = FindLeafPage(key, false);
+            auto pos = pg->KeyIndex(key, comparator_);
+            printf("at pg %d pos %d\n", pg->GetPageId(), pos);
+            return INDEXITERATOR_TYPE(pg->GetPageId(), pg->GetNextPageId(),
+                    pos, pg->GetSize(), buffer_pool_manager_);
         }
 
     /*****************************************************************************
@@ -355,7 +364,26 @@ namespace cmudb {
                 bool leftMost) {
             B_PLUS_TREE_LEAF_PAGE_TYPE *result = nullptr;
             if(leftMost) {
-
+                while(result==nullptr) {
+                    auto pg_id = root_page_id_;
+                    Page* pg = buffer_pool_manager_->FetchPage(pg_id);
+                    if (pg == nullptr) {
+                        throw Exception(EXCEPTION_TYPE_INDEX,
+                                "root page is pinned");
+                    }
+                    BPlusTreePage *node = reinterpret_cast<BPlusTreePage *>(pg->GetData());
+                    if(!node->IsLeafPage()) {
+                        auto interPage = 
+                            reinterpret_cast<B_PLUS_TREE_INTERNAL_PAGE_VARIABLE_TYPE *>(pg->GetData());
+                        auto pid = interPage->ValueAt(0);
+                        pg_id = pid; 
+                        printf("findleaf|internalpage, pageid=%d\n", pg_id);
+                    } else {
+                        auto leafPage = reinterpret_cast<B_PLUS_TREE_LEAF_PAGE_TYPE*>(pg->GetData());
+                        printf("findleftmost|pageid=%d\n", leafPage->GetPageId());
+                        result = leafPage;
+                    }
+                }
             } else {
                 auto pg_id = root_page_id_;
                 // keep search page with key until meet first leaf page

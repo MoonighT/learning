@@ -21,7 +21,7 @@ namespace cmudb {
                 page_id_t parent_id) {
             SetPageType(IndexPageType::INTERNAL_PAGE);
             SetSize(0);
-            SetMaxSize(4);
+            SetMaxSize(10);
             SetParentPageId(parent_id);
             SetPageId(page_id);
         }
