@@ -255,10 +255,14 @@ namespace cmudb {
             if(IsEmpty()) {
                 return;
             }
-            // auto leafpage = FindLeafPage(key);
+            auto leafpage = FindLeafPage(key, false);
             // delete entry from page
-            // may need to merge 
+            auto node_size = leafpage->RemoveAndDeleteRecord(key, comparator_);
             size_--;
+            // may need to merge 
+            if(node_size < leafpage->GetMaxSize()/2) {
+                CoalesceOrRedistribute(leafpage, transaction);
+            }
         }
 
     /*
@@ -271,6 +275,53 @@ namespace cmudb {
     INDEX_TEMPLATE_ARGUMENTS
         template <typename N>
         bool BPLUSTREE_TYPE::CoalesceOrRedistribute(N *node, Transaction *transaction) {
+            auto ppage_id = node->GetParentPageId();
+            if(ppage_id == INVALID_PAGE_ID) {
+                // no parent, root now
+                return false;
+            }  
+            // find left sibling
+            Page* pg = buffer_pool_manager_->FetchPage(ppage_id);
+            auto ppage = reinterpret_cast<B_PLUS_TREE_INTERNAL_PAGE_VARIABLE_TYPE *>(pg->GetData());
+            auto index = ppage->ValueIndex(node->GetPageId());
+            N *lpage = nullptr;
+            N *rpage = nullptr;
+            N *neighbour = nullptr;
+            page_id_t left_pg_id = INVALID_PAGE_ID;
+            page_id_t right_pg_id = INVALID_PAGE_ID;
+            if(index > 0) {
+                left_pg_id = ppage->ValueAt(index-1);
+                if(left_pg_id != INVALID_PAGE_ID) {
+                    pg = buffer_pool_manager_->FetchPage(left_pg_id);
+                    lpage = reinterpret_cast<N *>(pg->GetData());
+                    neighbour = lpage;
+                }    
+            }
+            // find right sibling
+            if(index == 0) {
+                right_pg_id = node->GetNextPageId();
+                if(right_pg_id != INVALID_PAGE_ID) {
+                    pg = buffer_pool_manager_->FetchPage(right_pg_id);
+                    rpage = reinterpret_cast<N *>(pg->GetData());
+                    neighbour = rpage;
+                }
+            }
+            bool result = false;
+            if(neighbour->GetSize() + node->GetSize() >= node->GetMaxSize())  {
+                // redistribut 
+                Redistribute(neighbour, node, index);
+                // need to update parent
+            } else {
+                // coalesce 
+                result = Coalesce(neighbour, node, ppage, index, transaction);
+            }
+            if(right_pg_id != INVALID_PAGE_ID) {
+                buffer_pool_manager_->UnpinPage(right_pg_id, true);
+            }
+            if(left_pg_id != INVALID_PAGE_ID) {
+                buffer_pool_manager_->UnpinPage(left_pg_id, true);
+            }
+            buffer_pool_manager_->UnpinPage(ppage_id, result);
             return false;
         }
 
@@ -292,6 +343,21 @@ namespace cmudb {
                 N *&neighbor_node, N *&node,
                 BPlusTreeInternalPage<KeyType, page_id_t, KeyComparator> *&parent,
                 int index, Transaction *transaction) {
+            if(index==0) {
+                neighbor_node->MoveAllTo(node, index, buffer_pool_manager_);
+                neighbor_node = node;
+                index = 1;
+            } else {
+                node->MoveAllTo(neighbor_node, index, buffer_pool_manager_);
+            }
+            // delete node from its parent
+            auto psize = parent->GetSize();
+            if(psize > 1) {
+                parent->Remove(index);
+            } else {
+                parent->RemoveAndReturnOnlyChild();
+                return true;
+            }
             return false;
         }
 
@@ -306,7 +372,15 @@ namespace cmudb {
      */
     INDEX_TEMPLATE_ARGUMENTS
         template <typename N>
-        void BPLUSTREE_TYPE::Redistribute(N *neighbor_node, N *node, int index) {}
+        void BPLUSTREE_TYPE::Redistribute(N *neighbor_node, N *node, int index) {
+            if(index == 0) {
+                // redist to right
+                neighbor_node->MoveFirstToEndOf(node, buffer_pool_manager_);
+            } else {
+                // redist to left
+                neighbor_node->MoveLastToFrontOf(node, index, buffer_pool_manager_);
+            }
+        }
     /*
      * Update root page if necessary
      * NOTE: size of root page can be less than min size and this method is only

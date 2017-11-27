@@ -181,9 +181,17 @@ namespace cmudb {
     INDEX_TEMPLATE_ARGUMENTS
         void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveAllTo(BPlusTreeLeafPage *recipient,
                 int, BufferPoolManager *) {
+            // move to end of recipt
+            recipient->CopyAllFrom(array, GetSize());
+            recipient->SetSize(0);
         }
     INDEX_TEMPLATE_ARGUMENTS
-        void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyAllFrom(MappingType *items, int size) {}
+        void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyAllFrom(MappingType *items, int size) {
+            for(int i=0; i<size;++i)  {
+                CopyLastFrom(items[i]);
+            }
+            SetSize(GetSize() + size);
+        }
 
     /*****************************************************************************
      * REDISTRIBUTE
@@ -195,10 +203,21 @@ namespace cmudb {
     INDEX_TEMPLATE_ARGUMENTS
         void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveFirstToEndOf(
                 BPlusTreeLeafPage *recipient,
-                BufferPoolManager *buffer_pool_manager) {}
+                BufferPoolManager *buffer_pool_manager) {
+            auto target = array[0];
+            recipient->CopyLastFrom(target);
+            //remove first
+            for(int i=0; i<GetSize()-1;++i) {
+                array[i] = array[i+1];
+            }
+            SetSize(GetSize()-1);
+        }
 
     INDEX_TEMPLATE_ARGUMENTS
-        void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyLastFrom(const MappingType &item) {}
+        void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyLastFrom(const MappingType &item) {
+            array[GetSize()] = item;
+            SetSize(GetSize()+1);
+        }
     /*
      * Remove the last key & value pair from this page to "recipient" page, then
      * update relavent key & value pair in its parent page.
@@ -206,12 +225,24 @@ namespace cmudb {
     INDEX_TEMPLATE_ARGUMENTS
         void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveLastToFrontOf(
                 BPlusTreeLeafPage *recipient, int parentIndex,
-                BufferPoolManager *buffer_pool_manager) {}
+                BufferPoolManager *buffer_pool_manager) {
+            auto target = array[GetSize()-1];
+            recipient->CopyFirstFrom(target, parentIndex,
+                    buffer_pool_manager);
+            //remove last
+            SetSize(GetSize()-1);
+        }
 
     INDEX_TEMPLATE_ARGUMENTS
         void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyFirstFrom(
                 const MappingType &item, int parentIndex,
-                BufferPoolManager *buffer_pool_manager) {}
+                BufferPoolManager *buffer_pool_manager) {
+            for(int i=0; i<GetSize();++i) {
+                array[i+1] = array[i];
+            }
+            array[0] = item;
+            SetSize(GetSize()+1);
+        }
 
     /*****************************************************************************
      * DEBUG

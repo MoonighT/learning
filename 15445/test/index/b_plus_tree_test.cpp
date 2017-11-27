@@ -303,7 +303,7 @@ TEST(BPlusTreeTests, ScaleTest) {
   for (int64_t key = 1; key < scale; key++) {
     keys.push_back(key);
   }
-
+  printf("start insert\n");
   for (auto key : keys) {
     int64_t value = key & 0xFFFFFFFF;
     rid.Set((int32_t)(key >> 32), value);
@@ -311,6 +311,7 @@ TEST(BPlusTreeTests, ScaleTest) {
     tree.Insert(index_key, rid);
   }
 
+  printf("start check\n");
   std::vector<RID> rids;
   for (auto key : keys) {
     rids.clear();
@@ -338,6 +339,7 @@ TEST(BPlusTreeTests, ScaleTest) {
     remove_keys.push_back(key);
   }
 
+  printf("start remove\n");
   for (auto key : remove_keys) {
     index_key.SetFromInteger(key);
     tree.Remove(index_key);
